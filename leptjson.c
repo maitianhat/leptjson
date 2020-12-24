@@ -3,11 +3,11 @@
 #include <crtdbg.h>
 #endif
 #include "leptjson.h"
-#include <assert.h>     // assert()
-#include <errno.h>      // errno, ERANGE
-#include <math.h>       // HUGE_VAL
-#include <stdlib.h>     // NULL, strtod(), malloc(), realloc(), free(), strtod()
-#include <string.h>     // memcpy()
+#include <assert.h>     /* assert()                                                 */
+#include <errno.h>      /* errno, ERANGE                                            */
+#include <math.h>       /* HUGE_VAL                                                 */
+#include <stdlib.h>     /* NULL, strtod(), malloc(), realloc(), free(), strtod()    */
+#include <string.h>     /* memcpy()                                                 */
 
 #ifndef LEPT_PARSE_STACK_INIT_SIZE
 #define LEPT_PARSE_STACK_INIT_SIZE 256
@@ -31,7 +31,7 @@ static void* lept_context_push(lept_context* c, size_t size) {
         if (c->size == 0)
             c->size = LEPT_PARSE_STACK_INIT_SIZE;
         while (c->top + size >= c->size)
-            c->size += c->size >> 1;        // c->size * 1.5
+            c->size += c->size >> 1;        /* c->size * 1.5 */
         c->stack = (char*)realloc(c->stack, c->size);
     }
     ret = c->stack + c->top;
@@ -154,7 +154,7 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
 			        case 'u':
 			        	if (!(p = lept_parse_hex4(p, &u)))
 			        		STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
-			        	if( u >= 0xD800 && u <= 0xD8FF ) {  // surrogate pair
+			        	if( u >= 0xD800 && u <= 0xD8FF ) {  /* surrogate pair */
 			        	    if( *p++ != '\\' )
 			        	    	STRING_ERROR( LEPT_PARSE_INVALID_UNICODE_SURROGATE );
 			        	    if( *p++ != 'u' )
@@ -220,9 +220,40 @@ static int lept_parse_array( lept_context *c, lept_value *v ) {
 			break;
 		}
 	}
-	// Pop and free values on the stack
+	/* Pop and free values on the stack */
 	for( i = 0; i < size; i++ )
 		lept_free( (lept_value*)lept_context_pop( c, sizeof(lept_value) ) );
+	return ret;
+}
+
+static int lept_parse_object( lept_context *c, lept_value *v ) {
+	size_t size;
+	lept_member m;
+	int ret;
+	EXPECT( c, '{' );
+	lept_parse_whitespace( c );
+	if( *c->json == '}' ) {
+		c->json++;
+		v->type = LEPT_OBJECT;
+		v->u.o.m = 0;
+		v->u.o.size = 0;
+		return LEPT_PARSE_OK;
+	}
+	m.k = NULL;
+	size = 0;
+	for( ; ; ) {
+		lept_init( &m.v );
+		/* \todo parse key to m.k, m.len */
+		/* \todo parse ws colon ws */
+		/* parse value */
+		if( (ret = lept_parse_value( c, &m.v )) != LEPT_PARSE_OK )
+			break;
+		memcpy( lept_context_push( c, sizeof(lept_member) ), &m, sizeof(lept_member) );
+		size++;
+		m.k = NULL; /* ownership is transferred to member on stack */
+		/* \todo parse ws [comma | right-curly-brace] ws */
+	}
+	/* \todo Pop and free members on the stack */
 	return ret;
 }
 
@@ -234,6 +265,7 @@ static int lept_parse_value(lept_context* c, lept_value* v) {
         default:    return lept_parse_number(c, v);
         case '"':   return lept_parse_string(c, v);
         case '[':   return lept_parse_array( c, v );
+	    case '{':   return lept_parse_object( c, v );
         case '\0':  return LEPT_PARSE_EXPECT_VALUE;
     }
 }
@@ -331,4 +363,27 @@ lept_value *lept_get_array_element( const lept_value *v, size_t index ) {
 	assert( v != NULL && v->type == LEPT_ARRAY );
 	assert( index < v->u.a.size );
 	return &v->u.a.e[index];
+}
+
+size_t lept_get_object_size( const lept_value *v ) {
+	assert( v != NULL && v->type == LEPT_OBJECT );
+	return v->u.o.size;
+}
+
+const char* lept_get_object_key( const lept_value *v, size_t index ) {
+	assert( v != NULL && v->type == LEPT_OBJECT );
+	assert( index < v->u.o.size );
+	return v->u.o.m[index].k;
+}
+
+size_t lept_get_object_key_length( const lept_value *v, size_t index ) {
+	assert( v != NULL && v->type == LEPT_OBJECT );
+	assert( index < v->u.o.size );
+	return v->u.o.m[index].klen;
+}
+
+lept_value* lept_get_object_value( const lept_value *v, size_t index ) {
+	assert( v != NULL && v->type == LEPT_OBJECT );
+	assert( index < v->u.o.size );
+	return &v->u.o.m[index].v;
 }
